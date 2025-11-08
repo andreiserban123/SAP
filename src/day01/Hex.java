@@ -1,6 +1,8 @@
+package day01;
+
 import java.util.Arrays;
 
-class Main {
+public class Hex {
 
     public static String toHexString(byte[] values) {
         StringBuilder sb = new StringBuilder();
@@ -12,7 +14,6 @@ class Main {
 
     public static byte[] toByteArray(String hexString) {
 
-        System.out.println("You entered this hexString: " + hexString);
         if (hexString.length() % 2 != 0) {
             throw new RuntimeException("Hex string's length must be even");
         }
@@ -72,10 +73,6 @@ class Main {
         System.out.println(password);
         password = new String(binaryPassword2);
         System.out.println(password);
-
-        // convert hex strings to values or byte array
-        String anotherHexValue = "23";
-
 
         var byteArr = toByteArray(hexPassword);
         System.out.println(Arrays.toString(byteArr));
