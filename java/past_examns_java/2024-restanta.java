@@ -67,8 +67,8 @@ public class Main {
         var map = new HashMap<String, String>();
 
         try (var br = new BufferedReader(new FileReader("sha2Fingerprints.txt"))) {
-            while (br.ready()) {
-                var path = br.readLine();
+            var path = "";
+            while ((path = br.readLine()) != null) {
                 var hash = br.readLine();
                 map.put(path, hash);
             }
