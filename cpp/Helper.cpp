@@ -102,6 +102,46 @@ void generateRSAKey(const string &privFilename, const string &pubFilename)
     BN_free(bn);
 }
 
+vector<unsigned char> rsaSignLowLevel(const vector<unsigned char> &msg, const string &privKeyFile)
+{
+    // 1. Load the RSA Private Key from file
+    FILE *fp = fopen(privKeyFile.c_str(), "rb");
+    if (!fp)
+        return {};
+
+    RSA *rsa = PEM_read_RSAPrivateKey(fp, NULL, NULL, NULL);
+    fclose(fp);
+
+    if (!rsa)
+        return {};
+
+    vector<unsigned char> digest = sha256(msg);
+
+    // 3. Prepare the output buffer (128 bytes for RSA-1024)
+    vector<unsigned char> sig(RSA_size(rsa));
+
+    // 4. Perform RAW RSA Private Encryption (Hash + Encrypt)
+    // This replaces RSA_sign to avoid the extra DigestInfo metadata
+    int result = RSA_private_encrypt(
+        (int)digest.size(), // Input: 32 bytes for SHA-256
+        digest.data(),      // Input: The raw hash
+        sig.data(),         // Output: The encrypted signature
+        rsa,
+        RSA_PKCS1_PADDING // Required padding type
+    );
+
+    if (result == -1)
+    {
+        RSA_free(rsa);
+        return {}; // Handle encryption error
+    }
+
+    // 5. Cleanup and return
+    sig.resize(result);
+    RSA_free(rsa);
+    return sig;
+}
+
 // --- RSA Sign (SHA256) ---
 vector<unsigned char> rsaSign(const vector<unsigned char> &msg, const string &privKeyFile)
 {
