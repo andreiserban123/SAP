@@ -5,6 +5,8 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <sstream>
+#include <string>
 #include <iomanip>
 #include <openssl/sha.h>
 #include <openssl/md5.h>
