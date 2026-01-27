@@ -291,6 +291,17 @@ vector<unsigned char> hexToBytes(const std::string &hex)
     return out;
 }
 
+std::string bytesToHex(const std::vector<unsigned char> &data)
+{
+    std::stringstream ss;
+    ss << std::hex << std::setfill('0');
+    for (unsigned char b : data)
+    {
+        ss << std::setw(2) << (int)b;
+    }
+    return ss.str();
+}
+
 // --- RSA Private Encrypt (legacy "sign-like") ---
 // Takes arbitrary small data, produces RSA_size(key) bytes.
 // Use only if your exercise expects RSA_public_decrypt later.
