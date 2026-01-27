@@ -18,6 +18,20 @@ public class Utility {
 	public static byte[] fromBase64(String input) {
 		return Base64.getDecoder().decode(input);
 	}
+
+		static byte rotateLeft(byte b, int n) {
+			int x = b & 0xFF;      
+			n = n & 7;             
+			return (byte)(((x << n) & 0xFF) | (x >>> (8 - n)));
+		}
+
+
+		static byte rotateRight(byte b, int n) {
+			int x = b & 0xFF;
+			n = n & 7;
+			return (byte)((x >>> n) | ((x << (8 - n)) & 0xFF));
+		}
+
 }
 
 
