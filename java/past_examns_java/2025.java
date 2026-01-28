@@ -4,40 +4,40 @@ import java.io.*;
 import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
 import java.util.Base64;
 
 public class Main {
 
     // Use this static variables to hardcode algorithm names and other important values
     private static final String HASH_ALGORITHM = "MD5";
-    private static final String HMAC_ALGORITHM = "HmacSHA1";
+    private static final String HMAC_ALGORITHM = "";
     private static final String SHARED_SECRET = "!q\\Qfald]Qyr1234"; // Secret key for HMAC authentication from the Excel file
-    private static final String AES_ALGORITHM = "";
+    private static final String AES_ALGORITHM = "AES";
     private static final String FOLDER_PATH = "messages";
 
 
     // Step 1: Generate Digest values of all the files from the given folder
     public static void generateFilesDigest(String folderPath) throws Exception {
         File folder = new File(folderPath);
-
-        File folderOut = new File("digests");
-
-        if (!folderOut.exists()) {
-            folderOut.mkdir();
+        File digests = new File("digests");
+        if (!digests.exists()) {
+            digests.mkdir();
         }
 
         for (var f : folder.listFiles()) {
-
-            String dgFilePath = "digests\\" + f.getName().substring(0, f.getName().length() - 3) + "digest";
-
-            if (new File(dgFilePath).exists()) {
+            File out = new File(
+                    "digests\\" + f.getName().substring(0, f.getName().length() - 3) + "digest"
+            );
+            if (out.exists()) {
                 continue;
             }
-            try (var fis = new FileInputStream(f.getPath()); var fout = new FileWriter("digests\\" + f.getName().substring(0, f.getName().length() - 3) + "digest")) {
+            try (var fis = new FileInputStream(f); var fos = new FileWriter(out)) {
+
                 MessageDigest md = MessageDigest.getInstance("MD5");
                 var digest = md.digest(fis.readAllBytes());
                 for (int i = 0; i < digest.length; i++) {
-                    fout.write(String.format("%02X", digest[i]));
+                    fos.write(String.format("%02X", digest[i]));
                 }
             }
         }
@@ -74,49 +74,54 @@ public class Main {
     // Step 2: Generate HMAC-SHA256 authentication code
     public static void generateFilesHMAC(String folderPath, String secretKey) throws Exception {
         File folder = new File(folderPath);
-
-        File folderOut = new File("hmacs");
-
-        if (!folderOut.exists()) {
-            folderOut.mkdir();
+        File digests = new File("hmacs");
+        if (!digests.exists()) {
+            digests.mkdir();
         }
 
         for (var f : folder.listFiles()) {
-
-            String dgFilePath = "hmacs\\" + f.getName().substring(0, f.getName().length() - 3) + "hmac";
-
-            if (new File(dgFilePath).exists()) {
+            File out = new File("hmacs\\" + f.getName().substring(0, f.getName().length() - 3) + "hmac");
+            if (out.exists()) {
                 continue;
             }
-            try (var fout = new FileWriter("hmacs\\" + f.getName().substring(0, f.getName().length() - 3) + "hmac")) {
-                var hmac = getMAC(f.getPath(), secretKey);
-                fout.write(Base64.getEncoder().encodeToString(hmac));
+            try (var fos = new FileWriter(out
+            )) {
+                var mac = getMAC(f.getPath(), secretKey);
+
+                fos.write(Base64.getEncoder().encodeToString(mac));
             }
         }
     }
 
+    public static byte[] toByteArray(String hexString) {
+        if (hexString.length() % 2 != 0) {
+            throw new RuntimeException("The hex string must have a size multiple of 2");
+        }
+        byte[] result = new byte[hexString.length() / 2];
+        for (int i = 0; i < result.length; i++) {
+            String currentPair = hexString.substring(i * 2, (i + 1) * 2);
+            result[i] = (byte) Integer.parseInt(currentPair.toUpperCase(), 16);
+        }
+        return result;
+    }
 
     // Step 3: Decrypt and verify the document
     public static boolean retrieveAndVerifyDocument(String file, String hashFile, String hmacFile, String secretKey) throws Exception {
         // Verify HMAC and digest for the given file
         // Return true if the files has not been changed
-
-        try (var fis = new FileInputStream(file); var hash = new BufferedReader(new FileReader(hashFile)); var hmac = new BufferedReader(new FileReader(hmacFile))) {
-
-            var md = MessageDigest.getInstance(HASH_ALGORITHM);
-
+        try (var fis = new FileInputStream(file); var hash = new BufferedReader(new FileReader(hashFile))) {
+            var hashArr = toByteArray(hash.readLine());
+            MessageDigest md = MessageDigest.getInstance("MD5");
             var digest = md.digest(fis.readAllBytes());
-            var res = "";
-            for (int i = 0; i < digest.length; i++) {
-                res += String.format("%02X", digest[i]);
-            }
-            if (!hash.readLine().equals(res)) {
+            if (!Arrays.equals(digest, hashArr)) {
                 return false;
             }
+        }
+
+        try (var hmac = new BufferedReader(new FileReader(hmacFile))) {
 
             var mac = getMAC(file, secretKey);
-
-            if (!Base64.getEncoder().encodeToString(mac).equals(hmac.readLine())) {
+            if (!hmac.readLine().equals(Base64.getEncoder().encodeToString(mac))) {
                 return false;
             }
         }
@@ -126,11 +131,17 @@ public class Main {
 
     // Step 4: Generate AES key from the shared secret. See Excel for details
     public static byte[] generateSecretKey(String sharedSecret) throws Exception {
-        var bytes = sharedSecret.getBytes();
-        byte val = bytes[6];
-        byte mask = (byte) (1 << 5);
-        bytes[6] = (byte) (val ^ mask);
-        return bytes;
+        var arr = sharedSecret.getBytes();
+        byte mask = 1 << 4;
+        arr[6] = (byte) ((arr[6] & 0xff) ^ mask);
+        return arr;
+    }
+
+
+    // Step 5: Encrypt document with AES and received key
+    public static void encryptDocument(String filePath, byte[] key) throws Exception {
+        var outPath = filePath.substring(9, filePath.length() - 3);
+        encrypt(filePath, key, AES_ALGORITHM, outPath + "enc");
     }
 
     public static void encrypt(
@@ -174,12 +185,6 @@ public class Main {
         fos.close();
 
     }
-
-    // Step 5: Encrypt document with AES and received key
-    public static void encryptDocument(String filePath, byte[] key) throws Exception {
-        encrypt(filePath, key, "AES", "message_1_2qcqxj.enc");
-    }
-
 
     public static void main(String[] args) {
 

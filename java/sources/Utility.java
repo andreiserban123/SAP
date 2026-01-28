@@ -11,6 +11,18 @@ public class Utility {
 		return sb.toString();
 	}
 	
+	public static byte[] toByteArray(String hexString) {
+		if(hexString.length() % 2 != 0) {
+			throw new RuntimeException("The hex string must have a size multiple of 2");
+		}
+		byte[] result= new byte[hexString.length()/2];
+		for(int i = 0; i < result.length; i++) {
+			String currentPair = hexString.substring(i*2, (i+1)*2);
+			result[i] = (byte)Integer.parseInt(currentPair.toUpperCase(),16);
+		}
+		return result;
+	}
+	
 	public static String toBase64(byte[] input) {
 		return Base64.getEncoder().encodeToString(input);
 	}
