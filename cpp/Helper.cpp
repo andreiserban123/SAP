@@ -87,21 +87,33 @@ vector<unsigned char> aesDecryptECB(const vector<unsigned char> &ciphertext, con
 // --- RSA Key Generation ---
 void generateRSAKey(const string &privFilename, const string &pubFilename)
 {
-    RSA *rsa = RSA_new();
-    BIGNUM *bn = BN_new();
-    BN_set_word(bn, RSA_F4);
-    RSA_generate_key_ex(rsa, 1024, bn, NULL);
+    RSA *key_pair = NULL;
 
-    FILE *priv = fopen(privFilename.c_str(), "wb");
-    PEM_write_RSAPrivateKey(priv, rsa, NULL, NULL, 0, NULL, NULL);
-    fclose(priv);
+    // generate a RSA key pair
+    key_pair = RSA_generate_key(1024, 17, NULL, NULL);
 
-    FILE *pub = fopen(pubFilename.c_str(), "wb");
-    PEM_write_RSAPublicKey(pub, rsa);
-    fclose(pub);
+    FILE *priv_file = fopen(privFilename.c_str(), "w+");
+    // save RSA private key into a PEM format file
+    int result = PEM_write_RSAPrivateKey(priv_file, key_pair, NULL, NULL, 0, NULL, NULL);
+    if (result != 1)
+    {
+        printf("Error during write the RSA private key into the file.\n");
+    }
 
-    RSA_free(rsa);
-    BN_free(bn);
+    FILE *pub_file = fopen(pubFilename.c_str(), "w+");
+    // save RSA public key into a PEM format file
+    result = PEM_write_RSAPublicKey(pub_file, key_pair);
+    if (result != 1)
+    {
+        printf("Error during write the RSA public key into the file.\n");
+    }
+
+    printf("RSA key pair has been successfully generated.\n");
+
+    RSA_free(key_pair); // deallocation of RSA structure done by openssl
+
+    fclose(priv_file);
+    fclose(pub_file);
 }
 
 vector<unsigned char> rsaSignLowLevel(const vector<unsigned char> &msg, const string &privKeyFile)
@@ -148,32 +160,67 @@ vector<unsigned char> rsaSignLowLevel(const vector<unsigned char> &msg, const st
 vector<unsigned char> rsaSign(const vector<unsigned char> &msg, const string &privKeyFile)
 {
     FILE *fp = fopen(privKeyFile.c_str(), "rb");
+    if (!fp)
+        return {};
+
+    // Load PKCS#1 Private Key
     RSA *rsa = PEM_read_RSAPrivateKey(fp, NULL, NULL, NULL);
     fclose(fp);
+    if (!rsa)
+        return {};
 
-    vector<unsigned char> sig(RSA_size(rsa));
-    unsigned int sigLen;
+    EVP_PKEY *pKey = EVP_PKEY_new();
+    EVP_PKEY_assign_RSA(pKey, rsa); // pKey now owns the rsa pointer
+
+    EVP_PKEY_CTX *pSignCtx = EVP_PKEY_CTX_new(pKey, NULL);
+    EVP_PKEY_sign_init(pSignCtx);
+    EVP_PKEY_CTX_set_rsa_padding(pSignCtx, RSA_PKCS1_PADDING);
+    EVP_PKEY_CTX_set_signature_md(pSignCtx, EVP_sha256());
 
     vector<unsigned char> digest = sha256(msg);
-    RSA_sign(NID_sha256, digest.data(), digest.size(), sig.data(), &sigLen, rsa);
+    size_t sigLen = 0;
+    EVP_PKEY_sign(pSignCtx, NULL, &sigLen, digest.data(), digest.size());
 
-    sig.resize(sigLen);
-    RSA_free(rsa);
+    vector<unsigned char> sig(sigLen);
+    EVP_PKEY_sign(pSignCtx, sig.data(), &sigLen, digest.data(), digest.size());
+
+    EVP_PKEY_CTX_free(pSignCtx);
+    EVP_PKEY_free(pKey); // Also frees rsa
     return sig;
 }
 
 // --- RSA Verify (SHA256) ---
 bool rsaVerify(const vector<unsigned char> &msg, const vector<unsigned char> &sig, const string &pubKeyFile)
 {
+    // 1. Load Public Key
     FILE *fp = fopen(pubKeyFile.c_str(), "rb");
-    RSA *rsa = PEM_read_RSAPublicKey(fp, NULL, NULL, NULL);
+    if (!fp)
+        return false;
+    EVP_PKEY *pKey = PEM_read_PUBKEY(fp, NULL, NULL, NULL);
     fclose(fp);
+    if (!pKey)
+        return false;
 
+    // 2. Setup Context
+    EVP_PKEY_CTX *pCheckCtx = EVP_PKEY_CTX_new(pKey, NULL);
+    EVP_PKEY_verify_init(pCheckCtx);
+
+    // 3. Set Parameters (Ensure these match the Signing side!)
+    EVP_PKEY_CTX_set_rsa_padding(pCheckCtx, RSA_PKCS1_PADDING);
+    EVP_PKEY_CTX_set_signature_md(pCheckCtx, EVP_sha256());
+
+    // 4. Hash the message
     vector<unsigned char> digest = sha256(msg);
-    bool valid = RSA_verify(NID_sha256, digest.data(), digest.size(), sig.data(), sig.size(), rsa);
 
-    RSA_free(rsa);
-    return valid;
+    // 5. Verify
+    // EVP_PKEY_verify returns 1 for success, 0 for failure, < 0 for error
+    int result = EVP_PKEY_verify(pCheckCtx, sig.data(), sig.size(), digest.data(), digest.size());
+
+    // 6. Cleanup
+    EVP_PKEY_CTX_free(pCheckCtx);
+    EVP_PKEY_free(pKey);
+
+    return (result == 1);
 }
 
 // --- RSA Public Encrypt ---
@@ -368,6 +415,20 @@ vector<unsigned char> rsaPublicDecrypt(const vector<unsigned char> &encryptedDat
 
     out.resize(n);
     return out;
+}
+
+unsigned char *read_file(const char *filename, size_t *size)
+{
+    FILE *f = fopen(filename, "rb");
+    if (!f)
+        return NULL;
+    fseek(f, 0, SEEK_END);
+    *size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    unsigned char *buffer = (unsigned char *)malloc(*size);
+    fread(buffer, 1, *size, f);
+    fclose(f);
+    return buffer;
 }
 
 // --- Main Example (adapt as needed) ---
